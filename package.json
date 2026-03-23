@@ -1,0 +1,26 @@
+{
+  "name": "ai-interview-socket-server",
+  "version": "1.0.0",
+  "description": "Real-time Socket.io server for DSA interviews - Vercel compatible",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "keywords": [
+    "socket.io",
+    "realtime",
+    "dsa",
+    "interviews"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
+  }
+}
