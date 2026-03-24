@@ -147,7 +147,7 @@ io.on('connection', (socket) => {
     room.pendingRequests.splice(reqIdx, 1);
     room.approvedMembers.push({ userId: request.userId, username: request.username });
 
-    // Find the approved user's socket and send them direct approval
+    // Find the approved user's socket and send them direct approval + members list
     const approvedUserSocketId = userSockets.get(approvedUserId);
     if (approvedUserSocketId) {
       const approvedUserSocket = io.sockets.sockets.get(approvedUserSocketId);
@@ -156,7 +156,9 @@ io.on('connection', (socket) => {
           success: true,
           roomId,
           userId: approvedUserId,
-          username: request.username
+          username: request.username,
+          members: room.approvedMembers,
+          memberCount: room.approvedMembers.length + 1, // +1 for owner
         });
         console.log(`[Socket] Sent join_approved to ${request.username}`);
       }
@@ -168,16 +170,23 @@ io.on('connection', (socket) => {
       username: request.username 
     });
 
-    // Update owner's members list
+    // Update EVERYONE's members list (both owner and newly approved member)
+    io.to(`room_${roomId}`).emit('members_list', {
+      approved: room.approvedMembers,
+      pending: room.pendingRequests,
+      memberCount: room.approvedMembers.length + 1, // +1 for owner
+    });
+
     const ownerSocket = io.sockets.sockets.get(room.ownerSocketId);
     if (ownerSocket) {
       ownerSocket.emit('members_list', {
         approved: room.approvedMembers,
         pending: room.pendingRequests,
+        memberCount: room.approvedMembers.length + 1,
       });
     }
 
-    console.log(`[Socket] Approved: ${request.username}`);
+    console.log(`[Socket] Approved: ${request.username} (total members: ${room.approvedMembers.length + 1})`);
   });
 
   // REJECT MEMBER
@@ -202,6 +211,30 @@ io.on('connection', (socket) => {
     }
 
     console.log(`[Socket] Rejected: ${request.username}`);
+  });
+
+  // GET ROOM STATE (for newly joined members)
+  socket.on('get_room_state', (data) => {
+    const { roomId } = data;
+    const room = rooms.get(roomId);
+
+    if (!room) {
+      socket.emit('room_state', { success: false, message: 'Room not found' });
+      return;
+    }
+
+    // Send current room state to the user
+    socket.emit('room_state', {
+      success: true,
+      roomId,
+      roomCode: room.roomCode,
+      ownerUsername: room.ownerUsername,
+      members: room.approvedMembers,
+      memberCount: room.approvedMembers.length + 1, // +1 for owner
+      pending: room.pendingRequests,
+    });
+
+    console.log(`[Socket] Sent room state for ${roomId}`);
   });
 
   // DISCONNECT
