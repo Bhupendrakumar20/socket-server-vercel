@@ -50,8 +50,8 @@ app.get('/health', (req, res) => {
 
 // In-memory room storage
 const rooms = new Map();
-const userSockets = new Map();
-const socketUsers = new Map();
+const userSockets = new Map(); // Track userId -> socketId
+const socketUsers = new Map();  // Track socketId -> userId
 
 // Socket event handlers
 io.on('connection', (socket) => {
@@ -85,6 +85,10 @@ io.on('connection', (socket) => {
   // REQUEST JOIN ROOM
   socket.on('request_join_room', (data) => {
     const { userId, username, roomCode } = data;
+    
+    // Store user socket mapping
+    userSockets.set(userId, socket.id);
+    socketUsers.set(socket.id, userId);
     
     // Find room
     let foundRoom = null;
@@ -124,7 +128,7 @@ io.on('connection', (socket) => {
       });
     }
 
-    console.log(`[Socket] Join request: ${username} → ${roomCode}`);
+    console.log(`[Socket] Join request: ${username} (${userId}) → ${roomCode}`);
   });
 
   // APPROVE MEMBER
@@ -138,12 +142,33 @@ io.on('connection', (socket) => {
     if (reqIdx === -1) return;
 
     const request = room.pendingRequests[reqIdx];
+    const approvedUserId = request.userId;
+    
     room.pendingRequests.splice(reqIdx, 1);
     room.approvedMembers.push({ userId: request.userId, username: request.username });
 
-    // Notify all
-    io.to(`room_${roomId}`).emit('member_joined', { userId: request.userId, username: request.username });
+    // Find the approved user's socket and send them direct approval
+    const approvedUserSocketId = userSockets.get(approvedUserId);
+    if (approvedUserSocketId) {
+      const approvedUserSocket = io.sockets.sockets.get(approvedUserSocketId);
+      if (approvedUserSocket) {
+        approvedUserSocket.emit('join_approved', { 
+          success: true,
+          roomId,
+          userId: approvedUserId,
+          username: request.username
+        });
+        console.log(`[Socket] Sent join_approved to ${request.username}`);
+      }
+    }
 
+    // Notify all in room that member joined
+    io.to(`room_${roomId}`).emit('member_joined', { 
+      userId: request.userId, 
+      username: request.username 
+    });
+
+    // Update owner's members list
     const ownerSocket = io.sockets.sockets.get(room.ownerSocketId);
     if (ownerSocket) {
       ownerSocket.emit('members_list', {
@@ -181,6 +206,13 @@ io.on('connection', (socket) => {
 
   // DISCONNECT
   socket.on('disconnect', () => {
+    // Clean up user socket mappings
+    const userId = socketUsers.get(socket.id);
+    if (userId) {
+      userSockets.delete(userId);
+    }
+    socketUsers.delete(socket.id);
+    
     console.log(`[Socket] User disconnected: ${socket.id}`);
   });
 });
