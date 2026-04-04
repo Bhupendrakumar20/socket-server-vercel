@@ -60,38 +60,60 @@ try {
   
   // Method 2: Individual credential env variables
   if (!serviceAccount && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
-    serviceAccount = {
-      type: 'service_account',
-      project_id: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      private_key_id: 'key-id',
-      private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      client_id: 'client-id',
-      auth_uri: 'https://accounts.google.com/o/oauth2/auth',
-      token_uri: 'https://oauth2.googleapis.com/token',
-      auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
-    };
-    console.log('[Server] Using individual Firebase credential variables');
+    try {
+      // Handle private key - could be literal \n or escaped \\n
+      let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+      
+      // If it contains literal backslash-n, convert to actual newlines
+      if (privateKey.includes('\\n')) {
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+      
+      serviceAccount = {
+        type: 'service_account',
+        project_id: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+        private_key_id: 'key-id',
+        private_key: privateKey,
+        client_email: process.env.FIREBASE_CLIENT_EMAIL,
+        client_id: 'client-id',
+        auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+        token_uri: 'https://oauth2.googleapis.com/token',
+        auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
+      };
+      console.log('[Server] ✅ Using individual Firebase credential variables');
+      console.log('[Server] ✅ Project ID:', serviceAccount.project_id);
+      console.log('[Server] ✅ Client Email:', serviceAccount.client_email);
+    } catch (err) {
+      console.error('[Server] ❌ Error preparing Firebase credentials:', err.message);
+    }
   }
   
   if (serviceAccount) {
-    if (admin.apps.length === 0) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID,
-      });
-      console.log('[Server] Firebase initialized ✓');
-    } else {
-      console.log('[Server] Firebase already initialized ✓');
+    try {
+      if (admin.apps.length === 0) {
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID,
+        });
+        console.log('[Server] ✅ Firebase initialized ✓');
+      } else {
+        console.log('[Server] ✅ Firebase already initialized ✓');
+      }
+      firebaseDb = admin.firestore();
+    } catch (initErr) {
+      console.error('[Server] ❌ Firebase initialization error:', initErr.message);
+      console.error('[Server] Error details:', initErr);
     }
-    firebaseDb = admin.firestore();
   } else {
-    console.warn('[Server] ⚠️  No Firebase credentials found in environment variables');
-    console.warn('[Server] Please set FIREBASE_SERVICE_ACCOUNT or FIREBASE_PRIVATE_KEY + FIREBASE_CLIENT_EMAIL');
+    console.warn('[Server] ⚠️  No Firebase credentials found');
+    console.warn('[Server] Environment variables check:');
+    console.warn('[Server]   - FIREBASE_PRIVATE_KEY exists:', !!process.env.FIREBASE_PRIVATE_KEY);
+    console.warn('[Server]   - FIREBASE_CLIENT_EMAIL exists:', !!process.env.FIREBASE_CLIENT_EMAIL);
+    console.warn('[Server]   - FIREBASE_PROJECT_ID exists:', !!process.env.FIREBASE_PROJECT_ID);
   }
 } catch (error) {
-  console.error('[Server] ❌ Firebase initialization failed:', error.message);
-  console.error('[Server] Full error:', error);
+  console.error('[Server] ❌ Firebase setup failed:', error.message);
+  console.error('[Server] Stack:', error.stack);
 }
 
 // Initialize Human Buddy Mode handlers (requires Firebase)
