@@ -9,6 +9,7 @@ const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const { initializeHumanBuddyHandlers } = require('./lib/socket-handlers/human-buddy-handlers.js');
 
 const app = express();
 const httpServer = createServer(app);
@@ -38,6 +39,41 @@ const io = new Server(httpServer, {
 
 app.use(cors());
 app.use(express.json());
+
+// Initialize Firebase Admin for database operations (if available)
+let firebaseDb = null;
+try {
+  const admin = require('firebase-admin');
+  if (admin.apps.length === 0) {
+    // Try to initialize with service account if available
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
+      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+      : null;
+    
+    if (serviceAccount) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      });
+      firebaseDb = admin.firestore();
+      console.log('[Server] Firebase initialized ✓');
+    }
+  } else {
+    firebaseDb = admin.firestore();
+    console.log('[Server] Firebase already initialized ✓');
+  }
+} catch (error) {
+  console.warn('[Server] Firebase initialization skipped:', error.message);
+  console.warn('[Server] Buddy mode will work with limited functionality');
+}
+
+// Initialize Human Buddy Mode handlers (requires Firebase)
+try {
+  initializeHumanBuddyHandlers(io, firebaseDb);
+  console.log('[Server] Human Buddy handlers initialized ✓');
+} catch (error) {
+  console.warn('[Server] Failed to initialize buddy handlers:', error.message);
+}
 
 // Health check endpoint
 app.get('/', (req, res) => {
