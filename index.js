@@ -44,27 +44,54 @@ app.use(express.json());
 let firebaseDb = null;
 try {
   const admin = require('firebase-admin');
-  if (admin.apps.length === 0) {
-    // Try to initialize with service account if available
-    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
-      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-      : null;
-    
-    if (serviceAccount) {
+  
+  // Try to initialize with service account from environment
+  let serviceAccount = null;
+  
+  // Method 1: FIREBASE_SERVICE_ACCOUNT as JSON string
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      console.log('[Server] Using FIREBASE_SERVICE_ACCOUNT env variable');
+    } catch (err) {
+      console.warn('[Server] Failed to parse FIREBASE_SERVICE_ACCOUNT:', err.message);
+    }
+  }
+  
+  // Method 2: Individual credential env variables
+  if (!serviceAccount && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+    serviceAccount = {
+      type: 'service_account',
+      project_id: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      private_key_id: 'key-id',
+      private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+      client_id: 'client-id',
+      auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+      token_uri: 'https://oauth2.googleapis.com/token',
+      auth_provider_x509_cert_url: 'https://www.googleapis.com/oauth2/v1/certs',
+    };
+    console.log('[Server] Using individual Firebase credential variables');
+  }
+  
+  if (serviceAccount) {
+    if (admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID,
       });
-      firebaseDb = admin.firestore();
       console.log('[Server] Firebase initialized ✓');
+    } else {
+      console.log('[Server] Firebase already initialized ✓');
     }
-  } else {
     firebaseDb = admin.firestore();
-    console.log('[Server] Firebase already initialized ✓');
+  } else {
+    console.warn('[Server] ⚠️  No Firebase credentials found in environment variables');
+    console.warn('[Server] Please set FIREBASE_SERVICE_ACCOUNT or FIREBASE_PRIVATE_KEY + FIREBASE_CLIENT_EMAIL');
   }
 } catch (error) {
-  console.warn('[Server] Firebase initialization skipped:', error.message);
-  console.warn('[Server] Buddy mode will work with limited functionality');
+  console.error('[Server] ❌ Firebase initialization failed:', error.message);
+  console.error('[Server] Full error:', error);
 }
 
 // Initialize Human Buddy Mode handlers (requires Firebase)
